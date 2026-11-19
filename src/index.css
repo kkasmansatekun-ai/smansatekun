@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  button,
+  select,
+  a {
+    cursor: pointer;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smooth Login Mesh Orb Animations (compositor-only transforms) */
+@keyframes floatOrbSlow {
+  0%, 100% {
+    transform: translate3d(0px, 0px, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(42px, -32px, 0) scale(1.08);
+  }
+  66% {
+    transform: translate3d(-28px, 24px, 0) scale(0.95);
+  }
+}
+
+@keyframes floatOrbReverse {
+  0%, 100% {
+    transform: translate3d(0px, 0px, 0) scale(1);
+  }
+  40% {
+    transform: translate3d(-48px, 30px, 0) scale(1.1);
+  }
+  75% {
+    transform: translate3d(32px, -24px, 0) scale(0.94);
+  }
+}
+
+@keyframes shimmerSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-orb-slow {
+  animation: floatOrbSlow 18s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-orb-reverse {
+  animation: floatOrbReverse 22s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-orb-accent {
+  animation: floatOrbSlow 15s ease-in-out infinite reverse;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-orb-slow,
+  .animate-orb-reverse,
+  .animate-orb-accent {
+    animation: none;
+  }
+}
+
+/* Subtle custom scrollbars for dashboard panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+}
