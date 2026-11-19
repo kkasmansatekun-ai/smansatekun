@@ -1,0 +1,6 @@
+{
+  "name": "SMANSATEKUN",
+  "description": "Sistem Manajemen Laboratorium Komputer untuk pengelolaan struktur jabatan, LMS, poin murid, inventaris perangkat, dan daftar permintaan pengadaan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
