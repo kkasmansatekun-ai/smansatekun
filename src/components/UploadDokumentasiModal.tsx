@@ -32,27 +32,33 @@ function getMonthNameFromDate(dateStr: string): BulanIndonesia {
   return 'November';
 }
 
-// Kompresi gambar ringan agar aman disimpan ke LocalStorage
+// Kompresi gambar agar ringan dan aman disimpan ke Firestore (< 185 KB)
 function compressImageToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Gagal membaca berkas gambar.'));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => resolve(String(reader.result));
+      img.onerror = () => resolve(String(reader.result).slice(0, 185000));
       img.onload = () => {
-        const maxWidth = 1080;
+        const maxWidth = 720;
         const scale = img.width > maxWidth ? maxWidth / img.width : 1;
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(String(reader.result));
+          resolve(String(reader.result).slice(0, 185000));
           return;
         }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
+        let quality = 0.75;
+        let output = canvas.toDataURL('image/jpeg', quality);
+        while (output.length > 185000 && quality > 0.35) {
+          quality -= 0.1;
+          output = canvas.toDataURL('image/jpeg', quality);
+        }
+        resolve(output);
       };
       img.src = String(reader.result);
     };

@@ -14,6 +14,7 @@ import {
   X,
   ChevronDown,
   Server,
+  HardDriveDownload,
 } from 'lucide-react';
 import { MenuKey } from '../types/smansatekun';
 
@@ -82,6 +83,9 @@ interface SidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
   onOpenUpload: () => void;
+  isLoggedIn: boolean;
+  isAdmin: boolean;
+  onOpenAdminTools: () => void;
 }
 
 export function Sidebar({
@@ -92,6 +96,9 @@ export function Sidebar({
   mobileOpen,
   onCloseMobile,
   onOpenUpload,
+  isLoggedIn,
+  isAdmin,
+  onOpenAdminTools,
 }: SidebarProps) {
   const isLaborActive = LABOR_KEYS.has(activeMenu);
   const [laborExpanded, setLaborExpanded] = useState<boolean>(true);
@@ -361,24 +368,46 @@ export function Sidebar({
           </div>
         </nav>
 
-        {/* Pemisah Visual & Menu Upload Dokumentasi di Bagian Paling Bawah Sidebar */}
-        <div className="mt-auto p-3 border-t border-white/10 shrink-0">
-          <button
-            type="button"
-            title={isCompact ? 'Upload Dokumentasi' : undefined}
-            onClick={() => {
-              onOpenUpload();
-              setCompactMenuOpen(false);
-              if (isMobileDrawer) onCloseMobile();
-            }}
-            className={`group w-full flex items-center justify-center ${
-              isCompact ? 'p-3' : 'gap-2.5 px-4 py-3'
-            } rounded-xl bg-[#0284C7]/15 border border-[#0284C7]/45 text-sky-200 hover:bg-[#0284C7] hover:text-white hover:border-[#0284C7] text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
-          >
-            <Upload className="w-4 h-4 shrink-0 transition-transform duration-150 group-hover:-translate-y-0.5" />
-            {!isCompact && <span className="whitespace-nowrap">Upload Dokumentasi</span>}
-          </button>
-        </div>
+        {/* Pemisah Visual & Menu Khusus Pengguna Login (Upload Dokumentasi & Admin Tools) */}
+        {(isLoggedIn || isAdmin) && (
+          <div className="mt-auto p-3 border-t border-white/10 shrink-0 space-y-2">
+            {isAdmin && (
+              <button
+                type="button"
+                title={isCompact ? 'Admin: Backup & ZIP' : undefined}
+                onClick={() => {
+                  onOpenAdminTools();
+                  setCompactMenuOpen(false);
+                  if (isMobileDrawer) onCloseMobile();
+                }}
+                className={`group w-full flex items-center justify-center ${
+                  isCompact ? 'p-3' : 'gap-2.5 px-4 py-2.5'
+                } rounded-xl bg-white/[0.07] border border-white/15 text-slate-200 hover:bg-white/15 hover:text-white text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
+              >
+                <HardDriveDownload className="w-4 h-4 text-sky-400 shrink-0" />
+                {!isCompact && <span className="whitespace-nowrap">Backup & ZIP Kode</span>}
+              </button>
+            )}
+
+            {isLoggedIn && (
+              <button
+                type="button"
+                title={isCompact ? 'Upload Dokumentasi' : undefined}
+                onClick={() => {
+                  onOpenUpload();
+                  setCompactMenuOpen(false);
+                  if (isMobileDrawer) onCloseMobile();
+                }}
+                className={`group w-full flex items-center justify-center ${
+                  isCompact ? 'p-3' : 'gap-2.5 px-4 py-3'
+                } rounded-xl bg-[#0284C7]/15 border border-[#0284C7]/45 text-sky-200 hover:bg-[#0284C7] hover:text-white hover:border-[#0284C7] text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400`}
+              >
+                <Upload className="w-4 h-4 shrink-0 transition-transform duration-150 group-hover:-translate-y-0.5" />
+                {!isCompact && <span className="whitespace-nowrap">Upload Dokumentasi</span>}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   };

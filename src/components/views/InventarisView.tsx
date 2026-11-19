@@ -29,14 +29,14 @@ import {
 import { Modal, ConfirmDialog } from '../ui/Modal';
 import { exportTabularData, ExportFormat } from '../../utils/exportData';
 
-function compressDamagePhoto(file: File, maxWidth = 1080, quality = 0.82): Promise<string> {
+function compressDamagePhoto(file: File, maxWidth = 720, initialQuality = 0.75): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Gagal membaca berkas gambar.'));
     reader.onload = () => {
       const dataUrl = reader.result as string;
       const img = new Image();
-      img.onerror = () => resolve(dataUrl);
+      img.onerror = () => resolve(dataUrl.slice(0, 185000));
       img.onload = () => {
         const scale = img.width > maxWidth ? maxWidth / img.width : 1;
         const width = Math.round(img.width * scale);
@@ -46,11 +46,17 @@ function compressDamagePhoto(file: File, maxWidth = 1080, quality = 0.82): Promi
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(dataUrl);
+          resolve(dataUrl.slice(0, 185000));
           return;
         }
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        let quality = initialQuality;
+        let output = canvas.toDataURL('image/jpeg', quality);
+        while (output.length > 185000 && quality > 0.35) {
+          quality -= 0.1;
+          output = canvas.toDataURL('image/jpeg', quality);
+        }
+        resolve(output);
       };
       img.src = dataUrl;
     };

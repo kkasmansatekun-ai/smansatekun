@@ -1,0 +1,606 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Hardened Global Primitives (Zero-Trust + Staff Allowlist)
+    // =========================================================================
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() &&
+        request.auth.token.email is string &&
+        request.auth.token.email.lower() == 'rahmat0042@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function emailKey(email) {
+      return email.lower().replace('[^a-z0-9]', '_');
+    }
+
+    // Anti-Hacker Gate: Only Admin or Admin-approved school staff emails may write school data
+    function isAuthorizedStaff() {
+      return isAdmin() || (
+        isVerifiedUser() &&
+        request.auth.token.email is string &&
+        exists(/databases/$(database)/documents/approvedStaff/$(emailKey(request.auth.token.email)))
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isNonEmptyStr(val, maxLen) {
+      return val is string && val.size() >= 1 && val.size() <= maxLen;
+    }
+
+    function isOptionalStr(data, key, maxLen) {
+      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    // =========================================================================
+    // Validation Blueprints (Anti-Update-Gap Helpers)
+    // =========================================================================
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'namaLengkap', 'email', 'jabatan', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'namaLengkap', 'email', 'jabatan', 'role', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.uid == userId &&
+        isNonEmptyStr(data.namaLengkap, 120) &&
+        isNonEmptyStr(data.email, 160) &&
+        isNonEmptyStr(data.jabatan, 120) &&
+        data.role in ['guest', 'guru', 'admin'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data, adminId) {
+      return data.keys().hasAll(['uid', 'email', 'grantedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'grantedAt']) &&
+        isValidId(data.uid) &&
+        data.uid == adminId &&
+        isNonEmptyStr(data.email, 160) &&
+        data.grantedAt is timestamp;
+    }
+
+    function isValidApprovedStaff(data, staffKey) {
+      return data.keys().hasAll(['email', 'nama', 'jabatan', 'addedBy', 'createdAt']) &&
+        data.keys().hasOnly(['email', 'nama', 'jabatan', 'addedBy', 'createdAt']) &&
+        isNonEmptyStr(data.email, 160) &&
+        emailKey(data.email) == staffKey &&
+        isNonEmptyStr(data.nama, 120) &&
+        isNonEmptyStr(data.jabatan, 120) &&
+        isValidId(data.addedBy) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidDokumentasi(data) {
+      return data.keys().hasAll([
+          'judul', 'kategori', 'bulan', 'tanggal', 'deskripsi', 'imageUrl',
+          'uploaderId', 'uploaderName', 'uploaderRole', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'judul', 'kategori', 'bulan', 'tanggal', 'deskripsi', 'imageUrl',
+          'uploaderId', 'uploaderName', 'uploaderRole', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.judul, 160) &&
+        data.kategori in [
+          'Kegiatan Sekolah', 'KKA', 'Informatika', 'Praktikum Arduino/IoT',
+          'OSN', 'Jaringan Komputer', 'Desain Grafis'
+        ] &&
+        data.bulan in [
+          'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+          'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        ] &&
+        data.tanggal is string &&
+        data.tanggal.size() == 10 &&
+        data.tanggal.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        isNonEmptyStr(data.deskripsi, 1000) &&
+        isNonEmptyStr(data.imageUrl, 200000) &&
+        isValidId(data.uploaderId) &&
+        isNonEmptyStr(data.uploaderName, 120) &&
+        data.uploaderRole in ['admin', 'guru'] &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBerita(data) {
+      return data.keys().hasAll([
+          'judul', 'sumber', 'tanggal', 'ringkasan', 'url', 'thumbnailUrl',
+          'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'judul', 'sumber', 'tanggal', 'ringkasan', 'url', 'thumbnailUrl',
+          'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.judul, 200) &&
+        isNonEmptyStr(data.sumber, 80) &&
+        isNonEmptyStr(data.tanggal, 40) &&
+        isNonEmptyStr(data.ringkasan, 600) &&
+        data.url is string &&
+        data.url.size() >= 8 &&
+        data.url.size() <= 500 &&
+        data.url.matches('^https?://.+') &&
+        isNonEmptyStr(data.thumbnailUrl, 200000) &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidInstagramPost(data) {
+      return data.keys().hasAll([
+          'judul', 'akunInstagram', 'tanggal', 'postUrl', 'imageUrl',
+          'uploaderId', 'uploaderName', 'uploaderRole', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'judul', 'akunInstagram', 'tanggal', 'postUrl', 'imageUrl',
+          'uploaderId', 'uploaderName', 'uploaderRole', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.judul, 200) &&
+        isNonEmptyStr(data.akunInstagram, 60) &&
+        isNonEmptyStr(data.tanggal, 40) &&
+        data.postUrl is string &&
+        data.postUrl.size() >= 22 &&
+        data.postUrl.size() <= 500 &&
+        data.postUrl.matches('^https://(www\\.)?instagram\\.com/.+') &&
+        isNonEmptyStr(data.imageUrl, 200000) &&
+        isValidId(data.uploaderId) &&
+        isNonEmptyStr(data.uploaderName, 120) &&
+        data.uploaderRole in ['admin', 'guru'] &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidJabatan(data) {
+      return data.keys().hasAll([
+          'nama', 'nip', 'jabatan', 'tingkat', 'tugasPokok',
+          'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'nama', 'nip', 'jabatan', 'tingkat', 'tugasPokok', 'avatarUrl',
+          'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.nama, 120) &&
+        isNonEmptyStr(data.nip, 40) &&
+        isNonEmptyStr(data.jabatan, 120) &&
+        data.tingkat in ['Pimpinan', 'Koordinator & Teknisi', 'Asisten & Operasional'] &&
+        isNonEmptyStr(data.tugasPokok, 800) &&
+        isOptionalStr(data, 'avatarUrl', 200000) &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidLmsCourse(data) {
+      return data.keys().hasAll([
+          'kode', 'nama', 'kelas', 'guruPengampu', 'ruangLab', 'jadwal',
+          'deskripsi', 'modul', 'tugas', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'kode', 'nama', 'kelas', 'guruPengampu', 'ruangLab', 'jadwal',
+          'deskripsi', 'modul', 'tugas', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.kode, 40) &&
+        isNonEmptyStr(data.nama, 120) &&
+        data.kelas in ['Kelas X', 'Kelas XI', 'Kelas XII'] &&
+        isNonEmptyStr(data.guruPengampu, 120) &&
+        isNonEmptyStr(data.ruangLab, 80) &&
+        isNonEmptyStr(data.jadwal, 80) &&
+        isNonEmptyStr(data.deskripsi, 800) &&
+        data.modul is list &&
+        data.modul.size() <= 30 &&
+        (data.modul.size() == 0 || data.modul[0] is map) &&
+        data.tugas is list &&
+        data.tugas.size() <= 30 &&
+        (data.tugas.size() == 0 || data.tugas[0] is map) &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStudentPoint(data) {
+      return data.keys().hasAll([
+          'nis', 'nama', 'kelas', 'poinPrestasi', 'poinPelanggaran',
+          'riwayat', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'nis', 'nama', 'kelas', 'poinPrestasi', 'poinPelanggaran',
+          'riwayat', 'ownerId', 'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.nis, 32) &&
+        isNonEmptyStr(data.nama, 120) &&
+        isNonEmptyStr(data.kelas, 40) &&
+        data.poinPrestasi is number &&
+        data.poinPrestasi >= 0 &&
+        data.poinPrestasi <= 10000 &&
+        data.poinPelanggaran is number &&
+        data.poinPelanggaran >= 0 &&
+        data.poinPelanggaran <= 10000 &&
+        data.riwayat is list &&
+        data.riwayat.size() <= 50 &&
+        (data.riwayat.size() == 0 || data.riwayat[0] is map) &&
+        isValidId(data.ownerId) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidInventoryItem(data) {
+      return data.keys().hasAll([
+          'kodeBarang', 'kategori', 'namaPerangkat', 'spesifikasi', 'lokasi',
+          'kondisi', 'keterangan', 'terakhirDiperiksa', 'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'kodeBarang', 'kategori', 'namaPerangkat', 'spesifikasi', 'lokasi',
+          'kondisi', 'keterangan', 'fotoKerusakan', 'terakhirDiperiksa', 'visibility',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.kodeBarang, 60) &&
+        data.kategori in ['Laptop', 'Komputer', 'Proyektor', 'PID'] &&
+        isNonEmptyStr(data.namaPerangkat, 140) &&
+        isNonEmptyStr(data.spesifikasi, 400) &&
+        isNonEmptyStr(data.lokasi, 100) &&
+        data.kondisi in ['Normal', 'Rusak'] &&
+        isNonEmptyStr(data.keterangan, 800) &&
+        isOptionalStr(data, 'fotoKerusakan', 200000) &&
+        isNonEmptyStr(data.terakhirDiperiksa, 40) &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidProcurementRequest(data) {
+      return data.keys().hasAll([
+          'namaPerangkat', 'spesifikasiSingkat', 'jumlah', 'estimasiHarga',
+          'urgensi', 'status', 'tahunAnggaran', 'pengusul', 'creatorUid',
+          'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'namaPerangkat', 'spesifikasiSingkat', 'jumlah', 'estimasiHarga',
+          'urgensi', 'status', 'tahunAnggaran', 'pengusul', 'creatorUid',
+          'visibility', 'createdAt', 'updatedAt'
+        ]) &&
+        isNonEmptyStr(data.namaPerangkat, 140) &&
+        isNonEmptyStr(data.spesifikasiSingkat, 500) &&
+        data.jumlah is number &&
+        data.jumlah >= 1 &&
+        data.jumlah <= 1000 &&
+        data.estimasiHarga is number &&
+        data.estimasiHarga >= 0 &&
+        data.estimasiHarga <= 10000000000 &&
+        data.urgensi in ['Tinggi', 'Sedang', 'Rendah'] &&
+        data.status in ['Disetujui', 'Diproses', 'Menunggu', 'Ditolak'] &&
+        data.tahunAnggaran in [2025, 2026, 2027] &&
+        isNonEmptyStr(data.pengusul, 120) &&
+        isValidId(data.creatorUid) &&
+        data.visibility == 'public' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // =========================================================================
+    // Collection Match Rules (All 11 Blueprint Collections)
+    // =========================================================================
+
+    // 1. User Profiles (PII Isolated; Self-Escalation Blocked)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().role == 'guest' ||
+          (incoming().role == 'guru' && isAuthorizedStaff()) ||
+          isAdmin()
+        );
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (isOwner(userId) &&
+            incoming().role == existing().role &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['namaLengkap', 'jabatan', 'email', 'updatedAt'])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['namaLengkap', 'jabatan', 'email', 'role', 'updatedAt']))
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // 2. Trusted Admins Registry
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(adminId) &&
+        isValidAdminRecord(incoming(), adminId) &&
+        incoming().grantedAt == request.time &&
+        isAdmin();
+      allow update: if false;
+      allow delete: if isValidId(adminId) && isAdmin();
+    }
+
+    // 3. Approved Staff Email Whitelist (Anti-Outsider Defense)
+    match /approvedStaff/{staffKey} {
+      allow get: if isValidId(staffKey) && (
+        isAdmin() ||
+        (isVerifiedUser() && request.auth.token.email is string && emailKey(request.auth.token.email) == staffKey)
+      );
+      allow list: if isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(staffKey) &&
+        isValidApprovedStaff(incoming(), staffKey) &&
+        incoming().addedBy == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if false;
+      allow delete: if isValidId(staffKey) && isAdmin();
+    }
+
+    // 4. Galeri Dokumentasi (Public Read; Authorized Staff / Admin Write)
+    match /dokumentasi/{docId} {
+      allow get: if isValidId(docId) && (existing().visibility == 'public' || isAdmin());
+      allow list: if resource.data.visibility == 'public' || isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(docId) &&
+        isValidDokumentasi(incoming()) &&
+        incoming().uploaderId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        ((incoming().uploaderRole == 'guru' && isAuthorizedStaff()) || isAdmin());
+      allow update: if isVerifiedUser() &&
+        isValidId(docId) &&
+        isValidDokumentasi(incoming()) &&
+        incoming().uploaderId == existing().uploaderId &&
+        incoming().uploaderRole == existing().uploaderRole &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'judul', 'kategori', 'bulan', 'tanggal', 'deskripsi', 'imageUrl', 'updatedAt'
+        ]) &&
+        ((existing().uploaderId == request.auth.uid && isAuthorizedStaff()) || isAdmin());
+      allow delete: if isVerifiedUser() &&
+        isValidId(docId) &&
+        ((existing().uploaderId == request.auth.uid && isAuthorizedStaff()) || isAdmin());
+    }
+
+    // 5. Berita & Liputan Media (Public Read; Admin Only Write)
+    match /berita/{beritaId} {
+      allow get: if isValidId(beritaId) && (existing().visibility == 'public' || isAdmin());
+      allow list: if resource.data.visibility == 'public' || isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(beritaId) &&
+        isValidBerita(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() &&
+        isValidId(beritaId) &&
+        isValidBerita(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'judul', 'sumber', 'tanggal', 'ringkasan', 'url', 'thumbnailUrl', 'updatedAt'
+        ]) &&
+        isAdmin();
+      allow delete: if isValidId(beritaId) && isAdmin();
+    }
+
+    // 6. Postingan Instagram (Public Read; Strict Instagram Domain; Authorized Staff / Admin Write)
+    match /instagramPosts/{postId} {
+      allow get: if isValidId(postId) && (existing().visibility == 'public' || isAdmin());
+      allow list: if resource.data.visibility == 'public' || isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(postId) &&
+        isValidInstagramPost(incoming()) &&
+        incoming().uploaderId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        ((incoming().uploaderRole == 'guru' && isAuthorizedStaff()) || isAdmin());
+      allow update: if isVerifiedUser() &&
+        isValidId(postId) &&
+        isValidInstagramPost(incoming()) &&
+        incoming().uploaderId == existing().uploaderId &&
+        incoming().uploaderRole == existing().uploaderRole &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'judul', 'akunInstagram', 'tanggal', 'postUrl', 'imageUrl', 'updatedAt'
+        ]) &&
+        ((existing().uploaderId == request.auth.uid && isAuthorizedStaff()) || isAdmin());
+      allow delete: if isVerifiedUser() &&
+        isValidId(postId) &&
+        ((existing().uploaderId == request.auth.uid && isAuthorizedStaff()) || isAdmin());
+    }
+
+    // 7. Struktur Jabatan Labor Komputer (Public Read; Admin Only Write)
+    match /jabatan/{jabatanId} {
+      allow get: if isValidId(jabatanId) && (existing().visibility == 'public' || isAdmin());
+      allow list: if resource.data.visibility == 'public' || isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(jabatanId) &&
+        isValidJabatan(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() &&
+        isValidId(jabatanId) &&
+        isValidJabatan(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'nama', 'nip', 'jabatan', 'tingkat', 'tugasPokok', 'avatarUrl', 'updatedAt'
+        ]) &&
+        isAdmin();
+      allow delete: if isValidId(jabatanId) && isAdmin();
+    }
+
+    // 8. LMS Courses (Public Read; Authorized Staff / Admin Write)
+    match /lmsCourses/{courseId} {
+      allow get: if isValidId(courseId) && (existing().visibility == 'public' || isAdmin());
+      allow list: if resource.data.visibility == 'public' || isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(courseId) &&
+        isValidLmsCourse(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() &&
+        isValidId(courseId) &&
+        isValidLmsCourse(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAuthorizedStaff() && incoming().diff(existing()).affectedKeys().hasOnly(['modul', 'updatedAt'])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'kode', 'nama', 'kelas', 'guruPengampu', 'ruangLab', 'jadwal',
+              'deskripsi', 'modul', 'tugas', 'updatedAt'
+            ]))
+        );
+      allow delete: if isValidId(courseId) && isAdmin();
+    }
+
+    // 9. Poin Murid (Student PII Protected: Owner Authorized Staff or Admin Only)
+    match /poinMurid/{studentId} {
+      allow get: if isValidId(studentId) &&
+        isVerifiedUser() &&
+        ((existing().ownerId == request.auth.uid && isAuthorizedStaff()) || isAdmin());
+      allow list: if isVerifiedUser() &&
+        (resource.data.ownerId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(studentId) &&
+        isValidStudentPoint(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAuthorizedStaff();
+      allow update: if isVerifiedUser() &&
+        isValidId(studentId) &&
+        isValidStudentPoint(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (existing().ownerId == request.auth.uid &&
+            isAuthorizedStaff() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'poinPrestasi', 'poinPelanggaran', 'riwayat', 'updatedAt'
+            ])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'nis', 'nama', 'kelas', 'poinPrestasi', 'poinPelanggaran', 'riwayat', 'updatedAt'
+            ]))
+        );
+      allow delete: if isValidId(studentId) && isAdmin();
+    }
+
+    // 10. Inventaris Labor Komputer (Public Read; Authorized Staff / Admin Write)
+    match /inventaris/{itemId} {
+      allow get: if isValidId(itemId) && (existing().visibility == 'public' || isAdmin());
+      allow list: if resource.data.visibility == 'public' || isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(itemId) &&
+        isValidInventoryItem(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAuthorizedStaff();
+      allow update: if isVerifiedUser() &&
+        isValidId(itemId) &&
+        isValidInventoryItem(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAuthorizedStaff() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'kondisi', 'keterangan', 'fotoKerusakan', 'terakhirDiperiksa', 'updatedAt'
+          ])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'kodeBarang', 'kategori', 'namaPerangkat', 'spesifikasi', 'lokasi',
+              'kondisi', 'keterangan', 'fotoKerusakan', 'terakhirDiperiksa', 'updatedAt'
+            ]))
+        );
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    // 11. Daftar Permintaan Perangkat (Public Read; Authorized Staff / Admin; Terminal State Locking)
+    match /permintaan/{requestId} {
+      allow get: if isValidId(requestId) && (existing().visibility == 'public' || isAdmin());
+      allow list: if resource.data.visibility == 'public' || isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(requestId) &&
+        isValidProcurementRequest(incoming()) &&
+        incoming().creatorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        ((incoming().status == 'Menunggu' && isAuthorizedStaff()) || isAdmin());
+      allow update: if isVerifiedUser() &&
+        isValidId(requestId) &&
+        isValidProcurementRequest(incoming()) &&
+        incoming().creatorUid == existing().creatorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (existing().creatorUid == request.auth.uid &&
+            isAuthorizedStaff() &&
+            !(existing().status in ['Disetujui', 'Ditolak']) &&
+            incoming().status == existing().status &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'namaPerangkat', 'spesifikasiSingkat', 'jumlah', 'estimasiHarga',
+              'urgensi', 'tahunAnggaran', 'pengusul', 'updatedAt'
+            ])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'namaPerangkat', 'spesifikasiSingkat', 'jumlah', 'estimasiHarga',
+              'urgensi', 'status', 'tahunAnggaran', 'pengusul', 'updatedAt'
+            ]))
+        );
+      allow delete: if isVerifiedUser() &&
+        isValidId(requestId) &&
+        (
+          (existing().creatorUid == request.auth.uid && isAuthorizedStaff() && !(existing().status in ['Disetujui', 'Ditolak'])) ||
+          isAdmin()
+        );
+    }
+  }
+}

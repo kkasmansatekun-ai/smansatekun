@@ -12,6 +12,9 @@ import {
   Upload,
   Newspaper,
   User,
+  Instagram,
+  Link2,
+  ImagePlus,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -19,20 +22,35 @@ import {
   BULAN_INDONESIA,
   BulanIndonesia,
   DokumentasiItem,
+  InstagramPost,
   KATEGORI_DOKUMENTASI,
   KategoriDokumentasi,
 } from '../../types/smansatekun';
+import {
+  sanitizeExternalUrl,
+  sanitizeImageUrl,
+  sanitizeInstagramUrl,
+} from '../../utils/security';
 import { Modal, ConfirmDialog } from '../ui/Modal';
 
 interface GaleriDokumentasiViewProps {
   dokumentasi: DokumentasiItem[];
   berita: BeritaItem[];
+  instagramPosts: InstagramPost[];
   currentUser: AuthUser;
   onOpenUpload: (editItem?: DokumentasiItem) => void;
   onDeleteDokumentasi: (id: string) => void;
   onAddBerita: (item: Omit<BeritaItem, 'id'>) => void;
   onUpdateBerita: (item: BeritaItem) => void;
   onDeleteBerita: (id: string) => void;
+  onAddInstagram: (
+    item: Omit<InstagramPost, 'id' | 'uploaderId' | 'uploaderName' | 'uploaderRole'>
+  ) => void;
+  onUpdateInstagram: (
+    id: string,
+    item: Omit<InstagramPost, 'id' | 'uploaderId' | 'uploaderName' | 'uploaderRole'>
+  ) => void;
+  onDeleteInstagram: (id: string) => void;
 }
 
 function formatDateId(dateStr: string): string {
@@ -78,15 +96,75 @@ function ImageWithFallback({
   );
 }
 
+const MAX_FIRESTORE_IMAGE_CHARS = 185000;
+
+function compressInstagramImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Gagal memproses gambar.'));
+          return;
+        }
+        let maxDim = 900;
+        let quality = 0.78;
+        let dataUrl = '';
+
+        for (let attempt = 0; attempt < 6; attempt++) {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          if (dataUrl.length <= MAX_FIRESTORE_IMAGE_CHARS) {
+            resolve(dataUrl);
+            return;
+          }
+          maxDim = Math.round(maxDim * 0.78);
+          quality = Math.max(0.45, quality - 0.08);
+        }
+
+        if (dataUrl.length <= MAX_FIRESTORE_IMAGE_CHARS) {
+          resolve(dataUrl);
+        } else {
+          reject(new Error('Ukuran gambar terlalu besar untuk disimpan. Pilih gambar lebih kecil.'));
+        }
+      };
+      img.onerror = () => reject(new Error('Berkas gambar tidak dapat dibaca.'));
+      img.src = typeof reader.result === 'string' ? reader.result : '';
+    };
+    reader.onerror = () => reject(new Error('Gagal membaca berkas gambar.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function GaleriDokumentasiView({
   dokumentasi,
   berita,
+  instagramPosts,
   currentUser,
   onOpenUpload,
   onDeleteDokumentasi,
   onAddBerita,
   onUpdateBerita,
   onDeleteBerita,
+  onAddInstagram,
+  onUpdateInstagram,
+  onDeleteInstagram,
 }: GaleriDokumentasiViewProps) {
   const [selectedBulan, setSelectedBulan] = useState<'Semua Bulan' | BulanIndonesia>('Semua Bulan');
   const [selectedKategori, setSelectedKategori] = useState<'Semua' | KategoriDokumentasi>('Semua');
@@ -110,8 +188,23 @@ export function GaleriDokumentasiView({
   const [newsError, setNewsError] = useState('');
   const [deleteNewsTarget, setDeleteNewsTarget] = useState<BeritaItem | null>(null);
 
+  // CRUD Postingan Instagram (Admin & Guru Terdaftar)
+  const [igModalOpen, setIgModalOpen] = useState(false);
+  const [editingIg, setEditingIg] = useState<InstagramPost | null>(null);
+  const [igJudul, setIgJudul] = useState('');
+  const [igAkun, setIgAkun] = useState('@smansatekun.official');
+  const [igTanggal, setIgTanggal] = useState('');
+  const [igPostUrl, setIgPostUrl] = useState('');
+  const [igImageUrl, setIgImageUrl] = useState('');
+  const [igImgMode, setIgImgMode] = useState<'upload' | 'url'>('upload');
+  const [igError, setIgError] = useState('');
+  const [deleteIgTarget, setDeleteIgTarget] = useState<InstagramPost | null>(null);
+
+  const isLoggedIn = currentUser.role !== 'guest';
   const isAdmin = currentUser.role === 'admin';
   const canEditDok = (item: DokumentasiItem) =>
+    isAdmin || (currentUser.role === 'guru' && item.uploaderId === currentUser.id);
+  const canEditIg = (item: InstagramPost) =>
     isAdmin || (currentUser.role === 'guru' && item.uploaderId === currentUser.id);
 
   const filteredDokumentasi = useMemo(() => {
@@ -174,14 +267,26 @@ export function GaleriDokumentasiView({
       return;
     }
 
+    const safeNewsUrl = sanitizeExternalUrl(newsUrl);
+    if (!safeNewsUrl) {
+      setNewsError('Tautan URL berita tidak valid. Gunakan protokol https:// yang sah.');
+      return;
+    }
+
+    const rawThumb = newsThumb.trim() || '/src/assets/images/berita_prestasi_sman1_1795043211512.jpg';
+    const safeThumb = sanitizeImageUrl(rawThumb);
+    if (!safeThumb) {
+      setNewsError('URL gambar thumbnail tidak valid atau tidak didukung.');
+      return;
+    }
+
     const payload = {
       judul: newsJudul.trim(),
       sumber: newsSumber.trim(),
       tanggal: newsTanggal.trim() || 'Nov 2026',
       ringkasan: newsRingkasan.trim() || 'Liputan kegiatan pendidikan dan inovasi SMAN 1 Teluk Kuantan.',
-      url: newsUrl.trim().startsWith('http') ? newsUrl.trim() : `https://${newsUrl.trim()}`,
-      thumbnailUrl:
-        newsThumb.trim() || '/src/assets/images/berita_prestasi_sman1_1795043211512.jpg',
+      url: safeNewsUrl,
+      thumbnailUrl: safeThumb,
     };
 
     if (editingNews) {
@@ -190,6 +295,96 @@ export function GaleriDokumentasiView({
       onAddBerita(payload);
     }
     setNewsModalOpen(false);
+  };
+
+  const openAddIgModal = () => {
+    setEditingIg(null);
+    setIgJudul('');
+    setIgAkun('@smansatekun.official');
+    setIgTanggal(
+      new Date().toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    );
+    setIgPostUrl('https://www.instagram.com/p/');
+    setIgImageUrl('');
+    setIgImgMode('upload');
+    setIgError('');
+    setIgModalOpen(true);
+  };
+
+  const openEditIgModal = (item: InstagramPost) => {
+    setEditingIg(item);
+    setIgJudul(item.judul);
+    setIgAkun(item.akunInstagram);
+    setIgTanggal(item.tanggal);
+    setIgPostUrl(item.postUrl);
+    setIgImageUrl(item.imageUrl);
+    setIgImgMode(item.imageUrl.startsWith('data:') ? 'upload' : 'url');
+    setIgError('');
+    setIgModalOpen(true);
+  };
+
+  const handleIgImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setIgError('Format gambar harus JPG, PNG, atau WebP.');
+      return;
+    }
+    setIgError('');
+    try {
+      const compressed = await compressInstagramImage(file);
+      setIgImageUrl(compressed);
+    } catch (err) {
+      setIgError(err instanceof Error ? err.message : 'Gagal memproses gambar.');
+    }
+  };
+
+  const handleIgSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIgError('');
+
+    const safePostUrl = sanitizeInstagramUrl(igPostUrl);
+    if (!safePostUrl) {
+      setIgError(
+        'Tautan harus berupa link postingan resmi Instagram (contoh: https://www.instagram.com/p/...).'
+      );
+      return;
+    }
+    if (!igJudul.trim()) {
+      setIgError('Judul atau caption singkat postingan Instagram wajib diisi.');
+      return;
+    }
+    const rawImg = igImageUrl.trim() || '/src/assets/images/galeri_praktikum_kka_1795043210630.jpg';
+    const safeImg = sanitizeImageUrl(rawImg);
+    if (!safeImg) {
+      setIgError('Gambar pratinjau tidak valid. Unggah gambar JPG/PNG/WebP atau masukkan URL https://.');
+      return;
+    }
+
+    const formattedAkun = igAkun.trim()
+      ? igAkun.trim().startsWith('@')
+        ? igAkun.trim()
+        : `@${igAkun.trim()}`
+      : '@smansatekun.official';
+
+    const payload = {
+      judul: igJudul.trim(),
+      akunInstagram: formattedAkun,
+      tanggal: igTanggal.trim() || 'Nov 2026',
+      postUrl: safePostUrl,
+      imageUrl: safeImg,
+    };
+
+    if (editingIg) {
+      onUpdateInstagram(editingIg.id, payload);
+    } else {
+      onAddInstagram(payload);
+    }
+    setIgModalOpen(false);
   };
 
   return (
@@ -220,14 +415,16 @@ export function GaleriDokumentasiView({
                 Tambah Berita
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => onOpenUpload()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#0284C7] px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition-colors shadow-xs whitespace-nowrap shrink-0"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              Upload Dokumentasi
-            </button>
+            {isLoggedIn && (
+              <button
+                type="button"
+                onClick={() => onOpenUpload()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0284C7] px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition-colors shadow-xs whitespace-nowrap shrink-0"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Upload Dokumentasi
+              </button>
+            )}
           </div>
         </div>
 
@@ -269,7 +466,7 @@ export function GaleriDokumentasiView({
 
                   <div className="mt-auto pt-3.5 flex items-center justify-between gap-2 border-t border-slate-100">
                     <a
-                      href={news.url}
+                      href={sanitizeExternalUrl(news.url) ?? '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0284C7] hover:text-sky-800 transition-colors whitespace-nowrap"
@@ -302,6 +499,121 @@ export function GaleriDokumentasiView({
                 </div>
               </article>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* Pemisah Halus */}
+      <hr className="border-slate-200/80" />
+
+      {/* Bagian 1B: Postingan Instagram SMANSATEKUN */}
+      <section aria-labelledby="section-instagram-title" className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div>
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0284C7]">
+              <Instagram className="w-3.5 h-3.5" />
+              Sorotan Media Sosial Resmi
+            </p>
+            <h2
+              id="section-instagram-title"
+              className="mt-0.5 text-xl sm:text-2xl font-bold text-[#0F172A] tracking-tight"
+            >
+              Postingan Instagram SMANSATEKUN
+            </h2>
+          </div>
+
+          {isLoggedIn && (
+            <button
+              type="button"
+              onClick={openAddIgModal}
+              className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:border-[#0284C7] hover:text-[#0284C7] transition-colors whitespace-nowrap shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Tambah Postingan IG
+            </button>
+          )}
+        </div>
+
+        {instagramPosts.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+            Belum ada tautan postingan Instagram yang ditampilkan.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {instagramPosts.map((post) => {
+              const safeIgUrl =
+                sanitizeInstagramUrl(post.postUrl) ?? 'https://www.instagram.com/';
+              const editableIg = canEditIg(post);
+
+              return (
+                <article
+                  key={post.id}
+                  className="group flex flex-col rounded-2xl bg-white border border-slate-200 overflow-hidden hover:border-sky-300 transition-colors"
+                >
+                  <a
+                    href={safeIgUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 block"
+                  >
+                    <ImageWithFallback
+                      src={post.imageUrl}
+                      alt={post.judul}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                    />
+                  </a>
+
+                  <div className="flex-1 flex flex-col p-4">
+                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+                      <span className="inline-flex items-center gap-1.5 font-semibold text-[#0F172A] truncate">
+                        <Instagram className="w-3.5 h-3.5 text-[#0284C7] shrink-0" />
+                        <span className="truncate">{post.akunInstagram}</span>
+                      </span>
+                      <span className="font-mono text-[11px] whitespace-nowrap shrink-0">
+                        {post.tanggal}
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-sm font-semibold text-[#0F172A] leading-snug line-clamp-2">
+                      {post.judul}
+                    </p>
+
+                    <div className="mt-auto pt-3.5 mt-3 flex items-center justify-between gap-2 border-t border-slate-100">
+                      <a
+                        href={safeIgUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0284C7] hover:text-sky-800 transition-colors whitespace-nowrap"
+                      >
+                        Buka di Instagram
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+
+                      {editableIg && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditIgModal(post)}
+                            aria-label={`Edit postingan ${post.judul}`}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#0284C7] hover:bg-sky-50 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteIgTarget(post)}
+                            aria-label={`Hapus postingan ${post.judul}`}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -439,14 +751,16 @@ export function GaleriDokumentasiView({
               >
                 Reset Filter
               </button>
-              <button
-                type="button"
-                onClick={() => onOpenUpload()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0284C7] rounded-xl hover:bg-sky-700"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                Upload Dokumentasi
-              </button>
+              {isLoggedIn && (
+                <button
+                  type="button"
+                  onClick={() => onOpenUpload()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0284C7] rounded-xl hover:bg-sky-700"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload Dokumentasi
+                </button>
+              )}
             </div>
           </div>
         ) : (
@@ -750,6 +1064,162 @@ export function GaleriDokumentasiView({
         </form>
       </Modal>
 
+      {/* Modal Tambah / Edit Postingan Instagram */}
+      <Modal
+        isOpen={igModalOpen}
+        onClose={() => setIgModalOpen(false)}
+        title={editingIg ? 'Edit Postingan Instagram' : 'Tambah Postingan Instagram'}
+        subtitle="Tampilkan tautan postingan resmi Instagram beserta foto pratinjaunya di halaman depan."
+      >
+        <form onSubmit={handleIgSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="ig-url" className="block text-sm font-semibold text-slate-700 mb-1.5">
+              Tautan Postingan Instagram
+            </label>
+            <input
+              id="ig-url"
+              type="url"
+              value={igPostUrl}
+              onChange={(e) => setIgPostUrl(e.target.value)}
+              placeholder="https://www.instagram.com/p/..."
+              className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#0284C7] focus:outline-none"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Wajib menggunakan tautan resmi dari domain <code className="font-mono">instagram.com</code>.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="ig-akun" className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Akun Instagram
+              </label>
+              <input
+                id="ig-akun"
+                type="text"
+                value={igAkun}
+                onChange={(e) => setIgAkun(e.target.value)}
+                placeholder="@smansatekun.official"
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#0284C7] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label htmlFor="ig-tgl" className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Tanggal Postingan
+              </label>
+              <input
+                id="ig-tgl"
+                type="text"
+                value={igTanggal}
+                onChange={(e) => setIgTanggal(e.target.value)}
+                placeholder="18 Nov 2026"
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#0284C7] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="ig-judul" className="block text-sm font-semibold text-slate-700 mb-1.5">
+              Judul / Caption Singkat
+            </label>
+            <textarea
+              id="ig-judul"
+              rows={2}
+              value={igJudul}
+              onChange={(e) => setIgJudul(e.target.value)}
+              placeholder="Contoh: Kegiatan Praktikum KKA & Robotika SMAN 1 Teluk Kuantan"
+              className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#0284C7] focus:outline-none resize-none"
+            />
+          </div>
+
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-slate-700">Gambar Pratinjau Postingan</span>
+              <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIgImgMode('upload')}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                    igImgMode === 'upload'
+                      ? 'bg-white text-[#0F172A] shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  Unggah Foto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIgImgMode('url')}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                    igImgMode === 'url'
+                      ? 'bg-white text-[#0F172A] shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  URL Gambar
+                </button>
+              </div>
+            </div>
+
+            {igImgMode === 'upload' ? (
+              <label className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-center cursor-pointer hover:border-[#0284C7] hover:bg-sky-50/40 transition-colors">
+                <ImagePlus className="w-5 h-5 text-[#0284C7] mb-1" />
+                <span className="text-xs font-semibold text-slate-700">
+                  Pilih gambar pratinjau postingan (JPG / PNG / WebP)
+                </span>
+                <span className="text-[11px] text-slate-500 mt-0.5">
+                  Otomatis dikompresi agar ringan di database cloud
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleIgImageFileChange}
+                  className="hidden"
+                />
+              </label>
+            ) : (
+              <input
+                type="text"
+                value={igImageUrl}
+                onChange={(e) => setIgImageUrl(e.target.value)}
+                placeholder="https://... atau /src/assets/images/..."
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#0284C7] focus:outline-none"
+              />
+            )}
+
+            {igImageUrl && (
+              <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                <ImageWithFallback
+                  src={igImageUrl}
+                  alt="Pratinjau Instagram"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+          </div>
+
+          {igError && <p className="text-xs font-medium text-red-600">{igError}</p>}
+
+          <div className="pt-2 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setIgModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 text-sm font-semibold text-white bg-[#0284C7] rounded-xl hover:bg-sky-700"
+            >
+              {editingIg ? 'Simpan Postingan' : 'Tambahkan ke Beranda'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Konfirmasi Hapus Dokumentasi */}
       <ConfirmDialog
         isOpen={Boolean(deleteDokTarget)}
@@ -776,6 +1246,21 @@ export function GaleriDokumentasiView({
         description={
           deleteNewsTarget
             ? `Apakah Anda yakin ingin menghapus tautan berita "${deleteNewsTarget.judul}"?`
+            : ''
+        }
+      />
+
+      {/* Konfirmasi Hapus Postingan Instagram */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteIgTarget)}
+        onClose={() => setDeleteIgTarget(null)}
+        onConfirm={() => {
+          if (deleteIgTarget) onDeleteInstagram(deleteIgTarget.id);
+        }}
+        title="Hapus Postingan Instagram"
+        description={
+          deleteIgTarget
+            ? `Apakah Anda yakin ingin menghapus postingan Instagram "${deleteIgTarget.judul}"?`
             : ''
         }
       />

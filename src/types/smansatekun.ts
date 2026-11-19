@@ -70,6 +70,26 @@ export interface BeritaItem {
   thumbnailUrl: string;
 }
 
+export interface InstagramPost {
+  id: string;
+  judul: string;
+  akunInstagram: string;
+  tanggal: string;
+  postUrl: string;
+  imageUrl: string;
+  uploaderId: string;
+  uploaderName: string;
+  uploaderRole: 'admin' | 'guru';
+}
+
+export interface ApprovedStaffItem {
+  id: string;
+  email: string;
+  nama: string;
+  jabatan: string;
+  addedBy: string;
+}
+
 export type TingkatHirarki =
   | 'Pimpinan'
   | 'Koordinator & Teknisi'

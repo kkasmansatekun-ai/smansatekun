@@ -1,0 +1,379 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil pengguna terautentikasi SMANSATEKUN (isolasi PII: hanya pemilik atau Admin).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "namaLengkap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "jabatan": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["guest", "guru", "admin"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "namaLengkap", "email", "jabatan", "role", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Daftar UID admin laboratorium yang terpercaya.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "grantedAt"]
+    },
+    "ApprovedStaff": {
+      "title": "ApprovedStaff",
+      "description": "Daftar putih (whitelist) email Guru SMANSATEKUN yang disetujui Admin untuk menulis ke Firestore.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "nama": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "jabatan": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "addedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "nama", "jabatan", "addedBy", "createdAt"]
+    },
+    "DokumentasiItem": {
+      "title": "DokumentasiItem",
+      "description": "Arsip foto dokumentasi kegiatan sekolah dan praktikum laboratorium.",
+      "type": "object",
+      "properties": {
+        "judul": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "kategori": {
+          "type": "string",
+          "enum": [
+            "Kegiatan Sekolah",
+            "KKA",
+            "Informatika",
+            "Praktikum Arduino/IoT",
+            "OSN",
+            "Jaringan Komputer",
+            "Desain Grafis"
+          ]
+        },
+        "bulan": {
+          "type": "string",
+          "enum": [
+            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+          ]
+        },
+        "tanggal": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "deskripsi": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 200000 },
+        "uploaderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "uploaderName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "uploaderRole": { "type": "string", "enum": ["admin", "guru"] },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "judul", "kategori", "bulan", "tanggal", "deskripsi", "imageUrl",
+        "uploaderId", "uploaderName", "uploaderRole", "visibility", "createdAt", "updatedAt"
+      ]
+    },
+    "BeritaItem": {
+      "title": "BeritaItem",
+      "description": "Tautan berita media daring dan liputan pendidikan sekolah.",
+      "type": "object",
+      "properties": {
+        "judul": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "sumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "tanggal": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "ringkasan": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "url": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 500,
+          "pattern": "^https?://.+"
+        },
+        "thumbnailUrl": { "type": "string", "minLength": 1, "maxLength": 200000 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "judul", "sumber", "tanggal", "ringkasan", "url", "thumbnailUrl",
+        "visibility", "createdAt", "updatedAt"
+      ]
+    },
+    "InstagramPost": {
+      "title": "InstagramPost",
+      "description": "Tautan postingan Instagram resmi sekolah beserta gambar pratinjau di halaman depan.",
+      "type": "object",
+      "properties": {
+        "judul": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "akunInstagram": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "tanggal": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "postUrl": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 500,
+          "pattern": "^https://(www\\.)?instagram\\.com/.+"
+        },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 200000 },
+        "uploaderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "uploaderName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "uploaderRole": { "type": "string", "enum": ["admin", "guru"] },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "judul", "akunInstagram", "tanggal", "postUrl", "imageUrl",
+        "uploaderId", "uploaderName", "uploaderRole", "visibility", "createdAt", "updatedAt"
+      ]
+    },
+    "JabatanItem": {
+      "title": "JabatanItem",
+      "description": "Struktur jabatan pengelola laboratorium komputer.",
+      "type": "object",
+      "properties": {
+        "nama": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "nip": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "jabatan": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "tingkat": {
+          "type": "string",
+          "enum": ["Pimpinan", "Koordinator & Teknisi", "Asisten & Operasional"]
+        },
+        "tugasPokok": { "type": "string", "minLength": 1, "maxLength": 800 },
+        "avatarUrl": { "type": "string", "maxLength": 200000 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "nama", "nip", "jabatan", "tingkat", "tugasPokok",
+        "visibility", "createdAt", "updatedAt"
+      ]
+    },
+    "LmsCourse": {
+      "title": "LmsCourse",
+      "description": "Mata pelajaran dan daftar modul/tugas di portal LMS.",
+      "type": "object",
+      "properties": {
+        "kode": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "nama": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "kelas": { "type": "string", "enum": ["Kelas X", "Kelas XI", "Kelas XII"] },
+        "guruPengampu": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "ruangLab": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "jadwal": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "deskripsi": { "type": "string", "minLength": 1, "maxLength": 800 },
+        "modul": { "type": "array" },
+        "tugas": { "type": "array" },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "kode", "nama", "kelas", "guruPengampu", "ruangLab", "jadwal",
+        "deskripsi", "modul", "tugas", "visibility", "createdAt", "updatedAt"
+      ]
+    },
+    "StudentPoint": {
+      "title": "StudentPoint",
+      "description": "Rekap poin prestasi dan pelanggaran murid (terbatas untuk Guru terverifikasi/Admin).",
+      "type": "object",
+      "properties": {
+        "nis": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "nama": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "kelas": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "poinPrestasi": { "type": "number" },
+        "poinPelanggaran": { "type": "number" },
+        "riwayat": { "type": "array" },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "nis", "nama", "kelas", "poinPrestasi", "poinPelanggaran",
+        "riwayat", "ownerId", "createdAt", "updatedAt"
+      ]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Data inventaris perangkat Labor Komputer beserta foto kerusakan.",
+      "type": "object",
+      "properties": {
+        "kodeBarang": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "kategori": { "type": "string", "enum": ["Laptop", "Komputer", "Proyektor", "PID"] },
+        "namaPerangkat": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "spesifikasi": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "lokasi": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "kondisi": { "type": "string", "enum": ["Normal", "Rusak"] },
+        "keterangan": { "type": "string", "minLength": 1, "maxLength": 800 },
+        "fotoKerusakan": { "type": "string", "maxLength": 200000 },
+        "terakhirDiperiksa": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "kodeBarang", "kategori", "namaPerangkat", "spesifikasi", "lokasi",
+        "kondisi", "keterangan", "terakhirDiperiksa", "visibility", "createdAt", "updatedAt"
+      ]
+    },
+    "ProcurementRequest": {
+      "title": "ProcurementRequest",
+      "description": "Daftar permintaan pengadaan perangkat laboratorium komputer per tahun anggaran.",
+      "type": "object",
+      "properties": {
+        "namaPerangkat": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "spesifikasiSingkat": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "jumlah": { "type": "number" },
+        "estimasiHarga": { "type": "number" },
+        "urgensi": { "type": "string", "enum": ["Tinggi", "Sedang", "Rendah"] },
+        "status": { "type": "string", "enum": ["Disetujui", "Diproses", "Menunggu", "Ditolak"] },
+        "tahunAnggaran": { "type": "number", "enum": [2025, 2026, 2027] },
+        "pengusul": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "creatorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "namaPerangkat", "spesifikasiSingkat", "jumlah", "estimasiHarga",
+        "urgensi", "status", "tahunAnggaran", "pengusul", "creatorUid",
+        "visibility", "createdAt", "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Profil pengguna terautentikasi dengan isolasi PII."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Daftar UID admin terverifikasi."
+    },
+    "/approvedStaff/{staffKey}": {
+      "schema": { "$ref": "#/entities/ApprovedStaff" },
+      "description": "Daftar putih email Guru yang disetujui Admin."
+    },
+    "/dokumentasi/{docId}": {
+      "schema": { "$ref": "#/entities/DokumentasiItem" },
+      "description": "Koleksi galeri dokumentasi kegiatan sekolah."
+    },
+    "/berita/{beritaId}": {
+      "schema": { "$ref": "#/entities/BeritaItem" },
+      "description": "Koleksi berita & liputan media daring."
+    },
+    "/instagramPosts/{postId}": {
+      "schema": { "$ref": "#/entities/InstagramPost" },
+      "description": "Koleksi tautan dan gambar postingan Instagram sekolah."
+    },
+    "/jabatan/{jabatanId}": {
+      "schema": { "$ref": "#/entities/JabatanItem" },
+      "description": "Koleksi struktur jabatan Labor Komputer."
+    },
+    "/lmsCourses/{courseId}": {
+      "schema": { "$ref": "#/entities/LmsCourse" },
+      "description": "Koleksi mata pelajaran dan modul LMS."
+    },
+    "/poinMurid/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentPoint" },
+      "description": "Koleksi data poin prestasi & pelanggaran murid (terbatas untuk Guru terverifikasi/Admin)."
+    },
+    "/inventaris/{itemId}": {
+      "schema": { "$ref": "#/entities/InventoryItem" },
+      "description": "Koleksi inventaris perangkat Labor Komputer dan foto kerusakan."
+    },
+    "/permintaan/{requestId}": {
+      "schema": { "$ref": "#/entities/ProcurementRequest" },
+      "description": "Koleksi daftar permintaan pengadaan perangkat per tahun anggaran."
+    }
+  }
+}

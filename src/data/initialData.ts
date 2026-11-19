@@ -1,6 +1,7 @@
 import {
   BeritaItem,
   DokumentasiItem,
+  InstagramPost,
   JabatanItem,
   LmsCourse,
   StudentPoint,
@@ -48,6 +49,42 @@ export const INITIAL_BERITA: BeritaItem[] = [
       'Pengenalan topologi jaringan, konfigurasi router, dan etika keamanan data kini diterapkan langsung melalui sesi praktik lab.',
     url: 'https://www.detik.com/edu',
     thumbnailUrl: '/src/assets/images/galeri_jaringan_mikrotik_1795043210387.jpg',
+  },
+];
+
+export const INITIAL_INSTAGRAM_POSTS: InstagramPost[] = [
+  {
+    id: 'ig-1',
+    judul: 'Keseruan Praktikum KKA & Pengolahan Data Siswa Kelas X di Lab Komputer 1 SMANSATEKUN!',
+    akunInstagram: '@smansatekun.official',
+    tanggal: '15 Nov 2026',
+    postUrl: 'https://www.instagram.com/p/SMANSATEKUN01/',
+    imageUrl: '/src/assets/images/galeri_praktikum_kka_1795043210630.jpg',
+    uploaderId: 'admin-hendra',
+    uploaderName: 'Admin SMANSATEKUN',
+    uploaderRole: 'admin',
+  },
+  {
+    id: 'ig-2',
+    judul: 'Eksperimen Robotika & Sensor Suhu Arduino Uno Tim IT Club SMAN 1 Teluk Kuantan.',
+    akunInstagram: '@smansatekun.official',
+    tanggal: '10 Nov 2026',
+    postUrl: 'https://www.instagram.com/p/SMANSATEKUN02/',
+    imageUrl: '/src/assets/images/galeri_arduino_iot_1795043210954.jpg',
+    uploaderId: 'admin-hendra',
+    uploaderName: 'Admin SMANSATEKUN',
+    uploaderRole: 'admin',
+  },
+  {
+    id: 'ig-3',
+    judul: 'Prestasi Membanggakan! Tim Inovasi Smart Lab SMANSATEKUN Raih Juara Tingkat Provinsi Riau.',
+    akunInstagram: '@smansatekun.official',
+    tanggal: '04 Nov 2026',
+    postUrl: 'https://www.instagram.com/p/SMANSATEKUN03/',
+    imageUrl: '/src/assets/images/berita_prestasi_sman1_1795043211512.jpg',
+    uploaderId: 'admin-hendra',
+    uploaderName: 'Admin SMANSATEKUN',
+    uploaderRole: 'admin',
   },
 ];
 

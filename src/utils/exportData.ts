@@ -1,22 +1,40 @@
+import { sanitizeCsvFormula } from './security';
+
 export type ExportFormat = 'excel' | 'csv';
 
 function escapeCsvCell(value: string | number): string {
-  const str = String(value ?? '');
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes(';')) {
-    return `"${str.replace(/"/g, '""')}"`;
+  const safeStr = sanitizeCsvFormula(value);
+  if (
+    safeStr.includes(',') ||
+    safeStr.includes('"') ||
+    safeStr.includes('\n') ||
+    safeStr.includes(';')
+  ) {
+    return `"${safeStr.replace(/"/g, '""')}"`;
   }
-  return str;
+  return safeStr;
 }
 
 function escapeHtml(value: string | number): string {
-  return String(value ?? '')
+  return sanitizeCsvFormula(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+export function buildCsvString(
+  headers: string[],
+  rows: Array<Array<string | number>>
+): string {
+  const csvLines = [
+    headers.map(escapeCsvCell).join(','),
+    ...rows.map((row) => row.map(escapeCsvCell).join(',')),
+  ];
+  return '\uFEFF' + csvLines.join('\r\n');
+}
+
+export function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -43,19 +61,14 @@ export function exportTabularData({
   const dateStamp = new Date().toISOString().slice(0, 10);
 
   if (format === 'csv') {
-    const csvLines = [
-      headers.map(escapeCsvCell).join(','),
-      ...rows.map((row) => row.map(escapeCsvCell).join(',')),
-    ];
-    // UTF-8 BOM agar karakter dan kolom terbaca rapi di Microsoft Excel
-    const blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], {
+    const csvContent = buildCsvString(headers, rows);
+    const blob = new Blob([csvContent], {
       type: 'text/csv;charset=utf-8;',
     });
-    triggerDownload(blob, `${filenameBase}_${dateStamp}.csv`);
+    triggerBlobDownload(blob, `${filenameBase}_${dateStamp}.csv`);
     return;
   }
 
-  // Format Excel (.xls) menggunakan HTML table terstruktur dengan encoding UTF-8
   const headerHtml = headers
     .map(
       (h) =>
@@ -97,5 +110,5 @@ export function exportTabularData({
   const blob = new Blob(['\uFEFF' + workbookHtml], {
     type: 'application/vnd.ms-excel;charset=utf-8;',
   });
-  triggerDownload(blob, `${filenameBase}_${dateStamp}.xls`);
+  triggerBlobDownload(blob, `${filenameBase}_${dateStamp}.xls`);
 }
