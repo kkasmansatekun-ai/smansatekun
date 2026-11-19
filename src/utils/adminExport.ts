@@ -11,7 +11,11 @@ import {
 } from '../types/smansatekun';
 import { buildCsvString, triggerBlobDownload } from './exportData';
 import { FIREBASE_PROJECT_ID, FIRESTORE_DATABASE_ID } from '../firebase';
-import { sourceFileLoaders, SOURCE_MANIFEST_TEMPLATE } from './sourceFilesManifest';
+import {
+  sourceFileLoaders,
+  imageAssetUrlLoaders,
+  SOURCE_MANIFEST_TEMPLATE,
+} from './sourceFilesManifest';
 
 export interface DatabaseBackupPayload {
   app: string;
@@ -200,6 +204,25 @@ export async function downloadProjectSourceZip(): Promise<number> {
     })
   );
 
+  // Sertakan aset gambar lokal (src/assets/images/*) agar tampilan galeri & berita di Vercel tetap lengkap
+  const imageEntries = Object.entries(imageAssetUrlLoaders);
+  await Promise.all(
+    imageEntries.map(async ([filePath, loadUrl]) => {
+      const cleanPath = filePath.replace(/^\/+/, '');
+      try {
+        const assetUrl = await loadUrl();
+        const res = await fetch(assetUrl);
+        if (res.ok) {
+          const buf = await res.arrayBuffer();
+          rootFolder.file(cleanPath, buf);
+          addedCount += 1;
+        }
+      } catch (err) {
+        console.warn(`[SMANSATEKUN ZIP] Melewati aset gambar ${cleanPath}:`, err);
+      }
+    })
+  );
+
   // Sertakan manifest loader agar hasil ekstraksi ZIP dapat langsung di-build dengan `npm run build`
   if (SOURCE_MANIFEST_TEMPLATE) {
     rootFolder.file('src/utils/sourceFilesManifest.ts', SOURCE_MANIFEST_TEMPLATE);
@@ -227,20 +250,21 @@ export async function downloadProjectSourceZip(): Promise<number> {
       'SMANSATEKUN — Paket Kode Sumber (Admin Export)',
       '==============================================',
       '',
+      'Sudah termasuk: seluruh src/, aset gambar, firebase-applet-config.json, vercel.json, dan firestore.rules.',
+      '',
       'Cara Menjalankan di Komputer Lokal:',
       '  1. Ekstrak seluruh isi folder SMANSATEKUN ini.',
-      '  2. Salin berkas firebase-applet-config.json dari Firebase Console project Anda ke root folder.',
-      '  3. Jalankan: npm install',
-      '  4. Jalankan: npm run dev',
+      '  2. Jalankan: npm install',
+      '  3. Jalankan: npm run dev',
       '',
-      'Cara Build & Deploy ke Vercel / GitHub:',
-      '  1. Pastikan seluruh folder src/, public/, index.html, package.json, dan vercel.json berada di root repositori GitHub.',
-      '  2. Tambahkan file firebase-applet-config.json dari project Firebase Anda.',
-      '  3. Jalankan: npm run build',
+      'Cara Deploy ke GitHub -> Vercel:',
+      '  1. Unggah SELURUH isi di dalam folder SMANSATEKUN (termasuk firebase-applet-config.json) langsung ke root repositori GitHub Anda.',
+      '  2. Vercel akan otomatis menjalankan `npm run build` dan menayangkan aplikasi.',
+      '  3. Tambahkan domain Vercel Anda (contoh: nama-app.vercel.app) ke Firebase Console -> Authentication -> Settings -> Authorized Domains agar Login Google berfungsi di domain Vercel.',
       '',
       'Catatan Keamanan:',
       '  - Jangan pernah mengunggah berkas .env berisi secret API key ke repositori publik.',
-      '  - Tinjau file firestore.rules sebelum deploy produksi.',
+      '  - Tinjau file firestore.rules secara berkala di Firebase Console.',
     ].join('\n')
   );
 
